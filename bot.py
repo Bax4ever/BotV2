@@ -35,7 +35,7 @@ async def main():
     await application.start()
 
     config = Config()
-    config.bind = ["0.0.0.0:5000"]  # Railway requires 0.0.0.0
+    config.bind = ["0.0.0.0:8080"]  # Railway requires 0.0.0.0
     await serve(app, config)
 
     await application.updater.wait()
