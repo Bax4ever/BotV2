@@ -98,10 +98,11 @@ async def main_async(token_address):
    #if sells_24h is None:
    #    sells_24h=0   
     eth_price_usd = get_latest_eth_price()
-
+     
     clog = get_wallet_balance(token_address, token_address) / 10 ** token_decimal
-  
-    clog_percent = (clog / total_supply) * 100
+    if not total_supply:
+         print(f"⚠️ Total supply is zero or undefined for {token_address}")
+    clog_percent = (clog / total_supply) * 100 if total_supply else 0
    
     market_cap_usd=0
     if eth_price_usd:
