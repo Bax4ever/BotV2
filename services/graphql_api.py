@@ -47,7 +47,7 @@ def get_liquidity_pair_details(pair_id):
                 "volumeToken1":0,
             } 
             
-        print("No pair details found for the given pair ID.")
+        #print("No pair details found for the given pair ID.")
 
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
@@ -100,7 +100,7 @@ def get_liquidity_pair_address(token_address):
                 #print(f"Price in ETH: {derived_eth}")
                 return derived_eth, pair_ids[0],
             else:
-                print("No pairBase ID found for this token.")
+                #print("No pairBase ID found for this token.")
                 return derived_eth, None
         else:
             # Handle case where the token data is not present in the response

@@ -2,10 +2,10 @@
 
 A **Python-based bot** that provides real-time **token analysis, liquidity tracking, and sniper/bundle wallet detection** on Ethereum-based blockchains.
 
-✅ **Supports Uniswap V2/V3, Infura, Moralis, Etherscan, and The Graph API.**  
+✅ **Supports Uniswap V2, Ankr, Moralis, Etherscan, and The Graph API.**  
 ✅ **Designed for traders and researchers to analyze on-chain activity.**  
 
-🚀 **Deployed on Railway for seamless 24/7 operation!**
+🚀 **Deployed on VS for seamless 24/7 operation!**
 
 ---
 

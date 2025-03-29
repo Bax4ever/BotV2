@@ -1,26 +1,23 @@
-
+from db import save_transaction_snapshot,save_static_token_data
+from services.moralis_api import get_token_pairs_info1
 WETH_ADDRESS = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
 
-def process_response_data(response_data, transactions, address, methodIds):
-   
+def process_response_data(response_data, transactions, address):
     zero_block = None
     first_block = None
     second_block = None
-
-    #global zero_block, first_block, second_block, bundle_groups, method, zero_block_set, trade_addresses
-    
     zero_block_set = False  # Ensure this is initialized
     trade_addresses = set()  # Ensure this is initialized
-    
+    method = None
     for i in range(0, len(response_data), 2):
         tx = response_data[i].get("result")
         receipt = response_data[i + 1].get("result")
-        
         if tx and receipt:
             transaction_hash = tx.get('hash')
-            method_id = methodIds.get(transaction_hash, None)
+            input_data = tx.get('input', '')
+            method_id =  method_id = input_data[:10] if input_data and input_data != "0x" else None
             TRANSACTION_TAGS = []
-
+            
             # Construct transaction data
             transaction_data = {
                 'transactionHash': tx.get('hash'),
@@ -42,14 +39,68 @@ def process_response_data(response_data, transactions, address, methodIds):
                 "methodId": method_id
             }
             
-            # Check if transaction involves WETH and add trade tag
-            if transaction_data['to'] and transaction_data['to'].lower() != address.lower():
-                for log in receipt.get('logs', []):
-                    first_log = receipt.get('logs', [])[0] if receipt.get('logs') else None
-                    if first_log and first_log.get('address').lower() == WETH_ADDRESS.lower():
-                        TRANSACTION_TAGS.append("trade")
-                        break
+            SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"
+            LIQ_TOPIC = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
+            TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            
+            found_trade_or_liq = False
+            
+            # Detect trade / liq
+            if is_add_liquidity(receipt.get("logs", [])):
+                TRANSACTION_TAGS.append("liq")
 
+            
+            for log in receipt.get("logs", []):
+                topics = log.get("topics", [])
+                if not topics:
+                    continue
+                
+                topic0 = topics[0].lower()
+            
+                if topic0 == LIQ_TOPIC:
+                    TRANSACTION_TAGS.append("liq")
+                    found_trade_or_liq = True
+            
+                if topic0 == SYNC_TOPIC:
+                    if "liq" not in TRANSACTION_TAGS:
+                        TRANSACTION_TAGS.append("trade")
+                    found_trade_or_liq = True
+            
+                if topic0 == TRANSFER_TOPIC and len(topics) >= 3:
+                    log_address = log.get("address", "").lower()
+                
+                    if log_address == address.lower():  # Only care about transfers of the target token
+                        from_address = "0x" + topics[1][-40:].lower()
+                        to_address = "0x" + topics[2][-40:].lower()
+                
+                        # Skip if from == 0x0 and it's LP mint (covered by liq tag already)
+                        if from_address == "0x0000000000000000000000000000000000000000":
+                            continue
+                        if "transfer" not in TRANSACTION_TAGS:
+                            TRANSACTION_TAGS.append("transfer")
+                        
+                
+                        try:
+                            transfer_raw = log.get("data")
+                            if transfer_raw:
+                                transfer_amount = int(transfer_raw, 16)
+                                readable_amount = transfer_amount / 10**18  # optional: fetch actual decimals
+                                transaction_data["transfer_amount"] = readable_amount
+                        except Exception as e:
+                            print(f"Failed to parse transfer amount: {e}")
+                
+                    try:
+                        # topics[1] = from, topics[2] = to
+                        transfer_raw = log.get("data")
+                        if transfer_raw:
+                            # This is hex string, like '0x000000000000...'
+                            transfer_amount = int(transfer_raw, 16)
+                            decimals = 18  # Default ERC-20, unless you fetched actual decimals
+                            readable_amount = transfer_amount / 10**decimals
+                            transaction_data["transfer_amount"] = readable_amount
+                    except Exception as e:
+                        print(f"Failed to parse transfer amount: {e}")
+                    
             # Set zero_block and add appropriate tags
             if "trade" in TRANSACTION_TAGS and not zero_block_set:
                 zero_block = transaction_data['blockNumber']
@@ -90,30 +141,33 @@ def process_response_data(response_data, transactions, address, methodIds):
             # Update transaction_data tags
             transaction_data['tags'] = TRANSACTION_TAGS
 
-            # Print for debugging
-            #print(f"Transaction {transaction_data['transactionHash']} | Block: {transaction_data['blockNumber']} | Tags: {transaction_data['tags']}")
-
             transactions.append(transaction_data)
             if "trade" in transaction_data["tags"] and from_address and from_address not in trade_addresses:
                 trade_addresses.add(from_address)
+            save_static_token_data({
+                "token_address": address,
+                "trade_addresses": list(trade_addresses)  # optional: convert set to list
+            })
+            transaction_data['token_address'] = address.lower()
+            save_transaction_snapshot(address, transaction_data,trade_addresses)
 
-def combine_transaction_data(details, receipt, token_value,balances,total_supply,eth_balances):
+def combine_transaction_data(details, receipt, token_value,balances,total_supply,eth_balances,token_address):
 
     if not isinstance(details, dict) or not isinstance(receipt, dict):
-        print("Error: Expected dictionaries for details and receipt.")
         return None
     # Skip non-trade transactions
     if 'trade' not in details.get('tags', []):
-        #print(f"Skipping transaction {details.get('transactionHash')} as it does not have a 'trade' tag.")
         return None
     from_address = details.get("from")
     token_balance = balances.get(from_address, 0.0)
     eth_balance=eth_balances.get(from_address,0.0)
+    
     # Calculate percentages
     balance_percentage = (token_balance / total_supply) * 100 if total_supply else 0
     received_percentage = (token_value / total_supply) * 100 if total_supply else 0
     combined_data = {
         "transactionHash": details.get("transactionHash"),
+        "token_address": token_address,
         "blockNumber": details.get("blockNumber"),
         "from": details.get("from"),
         "to": details.get("to"),
@@ -131,7 +185,71 @@ def combine_transaction_data(details, receipt, token_value,balances,total_supply
         "receivedPercentage": received_percentage,    # Tokens received as a percentage of total supply
         "ethBalance": eth_balance
          }
-    
+
+    save_transaction_snapshot(
+        token_address=token_address,
+        tx_data=combined_data,
+        update_dynamic_only=True
+    )
 
         
     return combined_data
+
+def is_trade_transaction(receipt: dict, token_address: str) -> bool:
+    if not receipt or 'logs' not in receipt:
+        return False
+
+    for log in receipt['logs']:
+        log_address = log.get('address', '').lower()
+
+        # Check if WETH or token involved in any log
+        if log_address in (WETH_ADDRESS.lower(), token_address.lower()):
+            topics = log.get('topics', [])
+
+            # Typical UniswapV2 Pair topics (e.g., Transfer, Sync, Swap)
+            if topics and len(topics) > 0:
+                # SWAP signature (or others, depending on your granularity)
+                if topics[0].startswith("0xd78ad95fa46c994b"):  # Swap event signature
+                    return True
+
+                # fallback: if there's a Transfer event and WETH/token involved
+                if topics[0].startswith("0xddf252ad"):  # Transfer
+                    return True
+
+    return False
+
+def is_add_liquidity(logs):
+    TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"
+    ZERO_TOPIC = "0x" + "00" * 32
+
+    sync_addresses = set()
+    liq_detected = False
+
+    for log in logs:
+        topics = log.get("topics", [])
+        if not topics or not isinstance(topics, list):
+            continue
+
+        topic0 = topics[0].lower()
+        log_address = log.get("address", "").lower()
+
+        # Store any addresses that emitted a Sync event
+        if topic0 == SYNC_TOPIC:
+            sync_addresses.add(log_address)
+
+    for log in logs:
+        topics = log.get("topics", [])
+        if not topics or len(topics) < 2:
+            continue
+
+        topic0 = topics[0].lower()
+        from_topic = topics[1].lower()
+        log_address = log.get("address", "").lower()
+
+        # Check for LP token mint (Transfer from 0x0)
+        if topic0 == TRANSFER_TOPIC and from_topic == ZERO_TOPIC:
+            if log_address in sync_addresses:
+                return True  # Liquidity was added
+
+    return False

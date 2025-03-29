@@ -1,46 +1,105 @@
 from services.moralis_api import get_token_pairs_info, get_erc20_token_total_transactions
 from services.etherscan_api import get_latest_eth_price
-from bot.utils import format_number_with_spaces
-from bot.data_processing import process_response_data, combine_transaction_data
-from services.infura_api import batch_get_token_balances, batch_get_eth_balances
+from bot.data_processing import combine_transaction_data
 from services.etherscan_api import get_wallet_balance, get_token_total_supply, get_all_token_transactions, get_contract_source_code
 from services.graphql_api import get_liquidity_pair_address, get_liquidity_pair_details
-from services.infura_api import batch_get_method_ids, get_transaction_details_and_receipt
-import asyncio
-from bot.models import TokenSummary
 from contracts.contract_analitic import get_contract_source_code, extract_social_links, extract_max_wallet_limit, extract_tax_and_swap_parameters
+from db import save_static_token_data, save_token_dynamics
+import json
+from db import SessionLocal,Token,TokenDynamic,TransactionSnapshot
+from .ankr_api import batch_get_eth_balances_ankr,batch_get_token_balances_ankr,get_transaction_details_and_receipt_ankr,batch_get_method_ids
+from sqlalchemy import func
+from bot.utils import load_transaction_snapshots,test_dexscreener_pair
+from portfolioTracker import portfolio_Tracker_function
 
 async def main_async(token_address):
+     
+    session = SessionLocal()
+    static_exists = session.query(Token).filter_by(token_address=token_address).first()
+    dynamic_data = session.query(TokenDynamic).filter_by(token_address=token_address).first()
+    tx_snaps=session.query(TransactionSnapshot.tx_hash).filter_by(token_address=token_address).all()
+   
     
+    if tx_snaps:
+        tx_hashes = [row.tx_hash for row in tx_snaps]
+        token_value_rows = session.query(
+        TransactionSnapshot.tx_hash,
+        TransactionSnapshot.token_value
+        ).filter_by(token_address=token_address).all()
+        # = [{"transactionHash": row.tx_hash, "tokenValue": row.token_value} for row in token_value_rows]
+        tx_hashes = [row.tx_hash for row in token_value_rows]
+        token_values = [row.token_value if row.token_value is not None else 0.0 for row in token_value_rows]
+    else:
+        tx_hashes, token_values = get_all_token_transactions(token_address)
+
+    session.close()
+
+    if static_exists:
+        token_symbol=static_exists.token_symbol
+        token_name=static_exists.token_name
+        token_decimal = static_exists.token_decimal
+        total_supply = static_exists.total_supply   
+        b_count = static_exists.b_count or 0
+        s_count = static_exists.s_count or 0
+        total_recivedB = static_exists.total_recivedB or 0
+        total_recivedS = static_exists.total_recivedS or 0
+    else:
+        token_symbol=""
+        token_name=""
+        token_decimal=0
+        
+        if token_values:
+            token_symbol = token_values[0]['tokenSymbol']
+            token_name = token_values[0]['tokenName']
+            token_decimal = token_values[0]['tokenDecimal']
+        total_supply = get_token_total_supply(token_address,token_decimal)
+        contract_code=get_contract_source_code(token_address)
+        links=extract_social_links(contract_code)
+        tax=extract_tax_and_swap_parameters(contract_code)
+        maxW=extract_max_wallet_limit(contract_code, total_supply)
+        save_static_token_data({
+            "token_address": token_address,
+            "token_name": token_name,
+            "token_symbol": token_symbol,
+            "token_decimal": token_decimal,
+            "total_supply": total_supply,
+            "links": json.dumps(links),
+            "tax": tax})
+
+    if dynamic_data:
+        token_address=token_address.lower()
+        transaction_details = load_transaction_snapshots(token_address)  # from your own function
+        if not transaction_details:  # fallback safety
+            token_address=token_address
+            transaction_details = await get_transaction_details_and_receipt_ankr(tx_hashes, token_address)
+    else:
+        transaction_details= await get_transaction_details_and_receipt_ankr(tx_hashes, token_address)
+
+    eth_price_usd = get_latest_eth_price()    
     trade_addresses = set()  # Each user gets their own trade_addresses set
-    tx_hashes, token_values = get_all_token_transactions(token_address)
     derived_eth, pair_id = get_liquidity_pair_address(token_address)
-    method_id = await batch_get_method_ids(tx_hashes)
+    
     pair_address,price_usd,liquidity_usd,volume_24h_usd,token0_symbol,token1_symbol =get_token_pairs_info(token_address)
-    #print(f"derived eth={derived_eth}")
-    #print(f"Price USD!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!:${price_usd}")
-    token_symbol=""
-    token_name=""
-    token_decimal=0
+    volumen24h,price,buys_24h,sells_24h=test_dexscreener_pair(pair_address)
+   #if volumen24h is None:
+   #    volumen24h=0
+   #if buys_24h is None:
+   #    buys_24h=0
+   #if sells_24h is None:
+   #    sells_24h=0   
     eth_price_usd = get_latest_eth_price()
-    if token_values:
-        token_symbol = token_values[0]['tokenSymbol']
-        token_name = token_values[0]['tokenName']
-        token_decimal = token_values[0]['tokenDecimal']
-        print(f"Token Symbol: {token_symbol}, Token Name: {token_name}, Token Decimals: {token_decimal}")
 
     clog = get_wallet_balance(token_address, token_address) / 10 ** token_decimal
-    total_supply = get_token_total_supply(token_address) / 10 ** token_decimal
-    clog_percent = (clog / total_supply) * 100
-    print(f"Total Supply {total_supply:.0f}, Clog: {clog:.1f}|{clog_percent:.0f}%")
   
+    clog_percent = (clog / total_supply) * 100
+   
     market_cap_usd=0
     if eth_price_usd:
         if derived_eth:
             market_cap_usd = derived_eth * total_supply * eth_price_usd
         else:
             market_cap_usd = float(price_usd) * total_supply
-        print(f"MARKET CAP ({token_symbol}) : ${market_cap_usd:.2f}")
+        
     reserveUSD=0
     tx_count=0
     totalVolumen=0
@@ -53,93 +112,97 @@ async def main_async(token_address):
             tx_count = int(pair_details.get("txCount", 0))
             volumeToken1 = float(pair_details.get("volumeToken1", 0.0))
             totalVolumen1 = volumeToken1 * eth_price_usd if eth_price_usd else 0.0
-            totalVolumen=get_erc20_token_total_transactions(token_address)
-            print(f"Liquidity: ${reserveUSD:.2f} | Transactions: {tx_count} | Total Volume: ${totalVolumen:.2f}")
-        else:
-            print("Pair details not found")
     else:
-        totalVolumen1="N/A"
+        totalVolumen1=volume_24h_usd
         pair_details=pair_address
-        totalVolumen=volume_24h_usd
         reserveUSD=liquidity_usd
         tx_count=get_erc20_token_total_transactions(token_address)
-        print(f"Liquidity: ${reserveUSD:.2f} | Transactions: {tx_count} | Total Volume: ${totalVolumen}")
-    transaction_details = await get_transaction_details_and_receipt(tx_hashes, token_address, method_id)
-    total_bundle_balance = 0.0
-    total_sniper_balance = 0.0
+
+    static_data = session.query(Token).filter(func.lower(Token.token_address) == token_address.lower()).first()
+    trade_addresses=static_data.trade_addresses
+ 
+    eth_balances=await batch_get_eth_balances_ankr(trade_addresses)
+    balances=await batch_get_token_balances_ankr(token_address,trade_addresses,token_decimal)
+
+    curent_bundle_balance_token = 0.0
+    curent_sniper_balance_token_percent = 0.0
     total_recivedB=0.0
     total_recivedS=0.0
     combined_transactions = []
-    trade_addresses_list = list(trade_addresses)
+    
     total_ethb=0.0
     total_eths=0.0
     b_count=0
     s_count=0
-    #print(trade_addresses_list,trade_addresses)
-    balances = await batch_get_token_balances(token_address, trade_addresses_list, token_decimal)
-    eth_balances=await batch_get_eth_balances( trade_addresses_list, 18)
+    
+
     for i, transaction in enumerate(transaction_details):
-        token_value = token_values[i]['tokenValue'] if i < len(token_values) else None
-        combined_data = combine_transaction_data(transaction, transaction, token_value, balances, total_supply,eth_balances)
+        
+        raw_value = token_values[i] if i < len(token_values) else 0.0
+
+        if isinstance(raw_value, dict):
+            token_value = raw_value.get("tokenValue", 0.0)
+        else:
+            token_value = raw_value
+
+        combined_data = combine_transaction_data(transaction, transaction, token_value, balances, total_supply,eth_balances,token_address)
 
         if combined_data:
             combined_transactions.append(combined_data)
             if "zero_block" in combined_data["tags"] and "📚bundle" in combined_data["tags"]:
-                total_bundle_balance += combined_data["tokenBalance"]
+                curent_bundle_balance_token += combined_data["tokenBalance"]
                 total_recivedB += token_value
                 total_ethb+= combined_data["ethBalance"]
                 b_count+=1
             elif "first_block" in combined_data["tags"] or ("zero_block" in combined_data["tags"] or "second_block" in combined_data["tags"]  and "🤖sniper" in combined_data["tags"]):
-                total_sniper_balance += combined_data["tokenBalance"]
+                curent_sniper_balance_token_percent += combined_data["tokenBalance"]
                 total_recivedS += token_value
                 total_eths+= combined_data["ethBalance"]
                 s_count+=1
-            #print_transaction_summary(combined_data)
-
-    total_bundle_balance_percent = (total_bundle_balance / total_supply) * 100
-    total_sniper_balance_percent = (total_sniper_balance / total_supply) * 100
-    total_sniper_worth=total_sniper_balance*derived_eth
-    total_bundle_worth=total_bundle_balance*derived_eth
+            
+    total_sniper_worth=curent_sniper_balance_token_percent*derived_eth
+    total_bundle_worth=curent_bundle_balance_token*derived_eth
     totalB_recivied=(total_recivedB/total_supply)*100
     totalS_recivied=(total_recivedS/total_supply)*100
-    print(f"Total 📚Bundles Recivied {total_recivedB:.2f}| {totalB_recivied:.2f}%| Total 🤖Sniper Recivied: {total_recivedS:.2f}| {totalS_recivied:.2f}%")
-    print(f"Total 📚Bundles Holding: {total_bundle_balance:.1f}|{total_bundle_balance_percent:.1f}% |Worth:{total_bundle_worth:.2f} ETH| Total 🤖Snipers Holding: {total_sniper_balance:.1f}|{total_sniper_balance_percent:.1f}% |Worth: {total_sniper_worth:.2f} ETH")
-    contract_code=get_contract_source_code(token_address)
-    links=extract_social_links(contract_code)
-    maxW=extract_max_wallet_limit(contract_code, total_supply)
-    tax=extract_tax_and_swap_parameters(contract_code)
-    unsold=(total_sniper_balance+total_bundle_balance)*derived_eth
-    #print(unsold,b_count,s_count,total_ethb,total_eths)
-    print(f"{maxW}| {tax}")
-    #response = generate_response(combined_data)
-    summary_data = TokenSummary(
-    token_address=token_address,
-    token_name=token_name,
-    token_symbol=token_symbol,
-    token_decimal=token_decimal,
-    total_supply=total_supply,
-    market_cap_usd=market_cap_usd,
-    clog=clog,
-    clog_percent=clog_percent,
-    b_count=b_count,
-    s_count=s_count,
-    total_recivedB=total_recivedB,
-    total_recivedS=total_recivedS,
-    total_bundle_balance=total_bundle_balance,
-    total_sniper_balance=total_sniper_balance,
-    unsold=unsold,
-    total_ethb=total_ethb,
-    total_eths=total_eths,
-    links=links,
-    tax=tax,
-    pairA=pair_address,
-    reserveUSD=reserveUSD,
-    tx_count=tx_count,
-    totalVolumen=totalVolumen,
-    combined_data=combined_transactions,
-    totalVolumen1=totalVolumen1,
-    bundle_arrow = "",
-    sniper_arrow = "",
-    market_cap_arrow=""
+
+    save_static_token_data({
+        "recivedB_percent":  totalB_recivied,
+        "recivedS_percent":  totalS_recivied,
+        "token_address": token_address,
+        "total_recivedB": total_recivedB,
+        "total_recivedS": total_recivedS,
+        "b_count": b_count,
+        "s_count": s_count,
+        "pairA": pair_address,
+    })
+    rounded_market_cap = round(market_cap_usd, 0)  # No decimals
+    rounded_bundle_balance = round(curent_bundle_balance_token, 2)  # Optional
+    rounded_sniper_balance = round(curent_sniper_balance_token_percent, 2)
+    rounded_reserveUSD = round(reserveUSD, 0)
+
+    save_token_dynamics(
+    **{
+        "token_address": token_address,
+        "market_cap_usd": rounded_market_cap,
+        "reserveUSD": rounded_reserveUSD,
+        "tx_count": tx_count,
+        "totalVolumen": volumen24h,
+        "totalVolumen1": totalVolumen1 if totalVolumen1 != "N/A" else 0,
+        "clog": clog,
+        "clog_percent": clog_percent,
+        "curent_bundle_balance_token": rounded_bundle_balance,
+        "curent_sniper_balance_token_percent": rounded_sniper_balance,
+        "total_ethb": total_ethb,
+        "total_eths": total_eths,
+        "total_sniper_worth": total_sniper_worth,
+        "total_bundle_worth": total_bundle_worth,
+        "buys_24h": buys_24h,
+        "sells_24h":sells_24h
+    }
 )
-    return summary_data
+
+    return curent_bundle_balance_token,curent_sniper_balance_token_percent,market_cap_usd,total_sniper_worth,total_bundle_worth
+
+
+
+

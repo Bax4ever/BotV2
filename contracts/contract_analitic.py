@@ -31,9 +31,6 @@ def extract_social_links(text):
     unique_website_links = list(set(filtered_website_links))
     for i, link in enumerate(unique_website_links, 1):
         result[f'web{i}'] = link
-
-    #for key, link in result.items():
-        #print(f"{key}: {link}")
     return result
 
 def extract_total_supply_from_source_code(source_code):
@@ -44,7 +41,6 @@ def extract_total_supply_from_source_code(source_code):
     if match:
         return int(match.group(1))
     else:
-        print("Total Supply not found in the source code.")
         return None
 
 def extract_max_wallet_limit(source_contract, total_supply):
