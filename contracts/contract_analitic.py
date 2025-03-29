@@ -66,6 +66,14 @@ def extract_max_wallet_limit(source_contract, total_supply):
     return None
 
 def extract_tax_and_swap_parameters(source_code):
+    if not source_code:
+        return {
+            "buy_tax": None,
+            "sell_tax": None,
+            "max_tx": None,
+            "max_wallet": None,
+            "swap_enabled": None,
+            }
     parameters = {}
     patterns = {
         '_initialBuyTax': r'uint256\s+private\s+_initialBuyTax\s*=\s*(\d+);',
