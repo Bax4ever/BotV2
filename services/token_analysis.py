@@ -1,7 +1,7 @@
 from services.moralis_api import get_token_pairs_info, get_erc20_token_total_transactions
 from services.etherscan_api import get_latest_eth_price
 from bot.data_processing import combine_transaction_data
-from services.etherscan_api import get_wallet_balance, get_token_total_supply, get_all_token_transactions, get_contract_source_code
+from services.etherscan_api import get_wallet_balance, get_token_total_supply, get_all_token_transactions
 from services.graphql_api import get_liquidity_pair_address, get_liquidity_pair_details
 from contracts.contract_analitic import get_contract_source_code, extract_social_links, extract_max_wallet_limit, extract_tax_and_swap_parameters
 from db import save_static_token_data, save_token_dynamics
@@ -54,6 +54,7 @@ async def main_async(token_address):
             token_decimal = token_values[0]['tokenDecimal']
         total_supply = get_token_total_supply(token_address,token_decimal)
         contract_code=get_contract_source_code(token_address)
+        print(contract_code)
         links=extract_social_links(contract_code)
         tax=extract_tax_and_swap_parameters(contract_code)
         maxW=extract_max_wallet_limit(contract_code, total_supply)
