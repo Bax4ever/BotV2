@@ -6,9 +6,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import JSON
 from sqlalchemy import func
 import time
-from bot.config import DATABASE_URL
-print("📦 DATABASE_URL:", DATABASE_URL)
-
+from dotenv import load_dotenv
+load_dotenv()  # ⛔ overrides Railway environment if .env is missing
+import os
+DATABASE_URL = os.getenv("DATABASE_URL")
 price_cache = {}  # token_address -> { "price": float, "timestamp": float } 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
