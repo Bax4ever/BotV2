@@ -480,7 +480,7 @@ def save_token_call(user_id, token_address, symbol, price, name, username=None, 
             return False  # Already called in last 24h
 
         call = TokenCall(
-            user_id=str(user_id),
+            user_id=user_id,
             token_address=token_address.lower(),
             name=name,
             symbol=symbol,
@@ -500,7 +500,7 @@ def save_token_call(user_id, token_address, symbol, price, name, username=None, 
     finally:
         session.close()
 
-def get_user_calls(user_id: str, hours=24):
+def get_user_calls(user_id: int, hours=24):
     session = SessionLocal()
     try:
         cutoff = datetime.utcnow() - timedelta(hours=hours)
