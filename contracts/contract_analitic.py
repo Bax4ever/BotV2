@@ -6,6 +6,13 @@ from services.etherscan_api import get_contract_source_code
 API_KEY = 'QKTQF4UIB2C55B3K1VQ4VQRD5U4D5NFM7B'
 
 def extract_social_links(text):
+    if not text:
+        return {
+            "telegram": [],
+            "twitter": [],
+            "website": [],
+            "others": []
+            }
     tg_pattern = r'(https?://t\.me/[\w\d_-]+)'
     twitter_pattern = r'(https?://(?:www\.)?(?:x\.com|twitter\.com)/[\w\d_-]+)'
     website_pattern = r'(https?://[\w\d\.-]+\.[\w]{2,}/?)'
