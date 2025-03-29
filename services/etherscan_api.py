@@ -64,6 +64,7 @@ def get_token_total_supply(token_address,token_decimal):
     supply_url = f"https://api.etherscan.io/api?module=stats&action=tokensupply&contractaddress={token_address}&apikey={etherscan_api_key}"
     response = requests.get(supply_url)
     supply_data = response.json()
+    print(response,supply_data)
     if 'status' in supply_data and supply_data['status'] == '1':
         supply=int(supply_data.get('result', 0))
         if supply:
