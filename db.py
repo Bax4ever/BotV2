@@ -9,7 +9,7 @@ import time
 from bot.config import DATABASE_URL
 
 price_cache = {}  # token_address -> { "price": float, "timestamp": float } 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session = SessionLocal()
 Base = declarative_base()
