@@ -454,7 +454,7 @@ def save_wallet_to_db(user_id: int, slot: int, address: str, nickname: str = Non
 
 def get_user_wallets(user_id, max_slots=4):
     all_slots = [None] * max_slots
-    wallets = session.query(SavedWallets).filter_by(user_id=str(user_id)).all()
+    wallets = session.query(SavedWallets).filter_by(user_id=user_id).all()
     for wallet in wallets:
         if 0 <= wallet.slot < max_slots:
             all_slots[wallet.slot] = {
@@ -505,7 +505,7 @@ def get_user_calls(user_id: str, hours=24):
     try:
         cutoff = datetime.utcnow() - timedelta(hours=hours)
         return session.query(TokenCall).filter(
-            TokenCall.user_id == str(user_id),
+            TokenCall.user_id == user_id,
             TokenCall.timestamp > cutoff
         ).all()
     finally:
