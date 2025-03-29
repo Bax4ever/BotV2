@@ -53,7 +53,7 @@ async def main_async(token_address):
             token_name = token_values[0]['tokenName']
             token_decimal = token_values[0]['tokenDecimal']
         total_supply = get_token_total_supply(token_address,token_decimal)
-        contract_code = await get_contract_source_code(token_address)
+        contract_code = get_contract_source_code(token_address)
 
         if contract_code:
              links = extract_social_links(contract_code)
