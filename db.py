@@ -7,6 +7,7 @@ from sqlalchemy import JSON
 from sqlalchemy import func
 import time
 from bot.config import DATABASE_URL
+print("📦 DATABASE_URL:", DATABASE_URL)
 
 price_cache = {}  # token_address -> { "price": float, "timestamp": float } 
 engine = create_engine(DATABASE_URL)
