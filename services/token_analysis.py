@@ -131,7 +131,9 @@ async def main_async(token_address):
 
     static_data = session.query(Token).filter(func.lower(Token.token_address) == token_address.lower()).first()
     trade_addresses=static_data.trade_addresses
- 
+    if not trade_addresses:
+         trade_addresses = []
+
     eth_balances=await batch_get_eth_balances_ankr(trade_addresses)
     balances=await batch_get_token_balances_ankr(token_address,trade_addresses,token_decimal)
 
