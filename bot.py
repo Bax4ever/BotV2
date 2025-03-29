@@ -45,7 +45,5 @@ async def main():
     config.bind = ["0.0.0.0:8080"]  # Railway requires 0.0.0.0
     await serve(app, config)
 
-    await application.updater.wait()
-
 if __name__ == "__main__":
     asyncio.run(main())
