@@ -118,7 +118,7 @@ class UserInteraction(Base):
     __tablename__ = "user_interactions"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Text, index=True)
+    user_id = Column(Integer, index=True)
     username = Column(String)
     message_id = Column(Integer, index=True)
     token_address = Column(String, index=True)
@@ -130,7 +130,7 @@ class SavedWallets(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     username= Column(Text, index=True, nullable=False)
-    user_id = Column(Text, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)
     slot = Column(Integer, nullable=False)
     address = Column(Text, nullable=False)
     nickname = Column(String, nullable=True)
@@ -139,7 +139,7 @@ class TokenCall(Base):
     __tablename__ = "token_calls"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(String, index=True)
+    user_id = Column(Integer, index=True)
     username = Column(String)
     first_name = Column(String)
     name = Column(String)
