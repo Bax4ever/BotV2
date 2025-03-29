@@ -613,7 +613,7 @@ async def handle_scoreboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return  # fallback safety
     price_cache = {}
-    user_id = str(query.from_user.id)
+    user_id = query.from_user.id
     recent_calls = get_recent_token_calls(hours=24)
     if not recent_calls:
         await query.edit_message_text("No calls made in the last 24h.")
