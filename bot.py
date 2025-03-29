@@ -22,10 +22,17 @@ register_handlers(application)
 # Webhook endpoint for Telegram
 @app.route('/webhook', methods=['POST'])
 async def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return 'OK'
+    try:
+        data = request.get_json(force=True)
+        print("📩 Incoming Telegram data:", data)
+        
+        update = Update.de_json(data, application.bot)
+        await application.process_update(update)
+        return 'OK'
+        
+    except Exception as e:
+        print("❌ Error in webhook:", str(e))
+        return 'ERROR', 500
 
 async def main():
     public_url = os.getenv("RAILWAY_PUBLIC_URL")  # Set this in Railway env vars
