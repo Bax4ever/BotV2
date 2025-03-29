@@ -42,21 +42,6 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     username = update.effective_user.username
     message_text = update.message.text.strip()
 
-    if update.message:
-        await update.message.delete()
-
-
-
-    # 🗑️ Delete previous prompt message (if exists)
-    prompt_id = context.user_data.pop("wallet_prompt_message_id", None)
-    if prompt_id:
-        try:
-            await context.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=prompt_id
-            )
-        except:
-            pass
 
     if context.user_data.get("pending_wallet_slot") is not None:
         slot = context.user_data["pending_wallet_slot"]
@@ -242,8 +227,6 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_rename_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
-    if update.message:
-        await update.message.delete()
     if len(args) < 2:
         msg = await update.message.reply_text("⚠️ Usage: /rename <old_nickname> <new_nickname>")
         asyncio.create_task(delete_later(context.bot, update.effective_chat.id, msg.message_id, delay=10))
@@ -266,8 +249,6 @@ async def handle_rename_wallet(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_clear_wallets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if update.message:
-        await update.message.delete()
     # Delete all wallets for this user
     deleted = session.query(SavedWallets).filter_by(user_id=user_id).delete()
     session.commit()
