@@ -56,33 +56,25 @@ async def main_async(token_address):
         contract_code = await get_contract_source_code(token_address)
 
         if contract_code:
-            links = extract_social_links(contract_code)
-            tax = extract_tax_and_swap_parameters(contract_code)
-            maxW = extract_max_wallet_limit(contract_code, total_supply)
-    
-    save_static_token_data({
-        "token_address": token_address,
-        "token_name": token_name,
-        "token_symbol": token_symbol,
-        "token_decimal": token_decimal,
-        "total_supply": total_supply,
-        "links": json.dumps(links),
-        "tax": tax
-    })
-else:
-    print(f"⚠️ Contract code not found for {token_address}")
-    links = {}
-    tax = {}
-    maxW = None  # or 0 if you're using that downstream
+             links = extract_social_links(contract_code)
+             tax = extract_tax_and_swap_parameters(contract_code)
+             maxW = extract_max_wallet_limit(contract_code, total_supply)
+        else:
+             print(f"⚠️ Contract code not found for {token_address}")
+             links = {}
+             tax = {}
+             maxW = None  # or 0 if you use it numerically
 
+         # ✅ Always save the token statically — whether contract code was found or not
         save_static_token_data({
-            "token_address": token_address,
-            "token_name": token_name,
-            "token_symbol": token_symbol,
-            "token_decimal": token_decimal,
-            "total_supply": total_supply,
-            "links": json.dumps(links),
-            "tax": tax})
+             "token_address": token_address,
+             "token_name": token_name,
+             "token_symbol": token_symbol,
+             "token_decimal": token_decimal,
+             "total_supply": total_supply,
+             "links": json.dumps(links),
+             "tax": tax
+              })
 
     if dynamic_data:
         token_address=token_address.lower()
